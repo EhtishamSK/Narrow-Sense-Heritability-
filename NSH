@@ -1,0 +1,203 @@
+# Set the working directory to the folder where your data files are located
+setwd("C:/Users/ehtis/OneDrive - New Mexico State University/SUNNY/Research Projects/Mechanical Harvest Paper/Phenotype manuscript/single location/NSH")
+
+# Check the current working directory
+getwd()
+
+# Skip the first 10 lines of the GBS data file and read it into R
+# This is necessary because the GBS file is in HamMap format, which has initial lines that aren't part of the data
+hapmap_data <- read.table("GBS_PANEL_DIPLOID_75G.hmp.txt", header = FALSE, skip = 10)
+
+# View the first few rows of the data to check its structure
+head(hapmap_data)
+str(hapmap_data)
+
+# Load the dplyr package for data manipulation
+library(dplyr)
+
+# Extract SNP genotype data starting from column 12 to the last column
+genotype_data <- hapmap_data[, 12:ncol(hapmap_data)]
+
+# Check the structure of the extracted genotype data
+str(genotype_data)
+
+# Define a function to convert genotypes from character to numeric codes
+# This coding scheme is common in genetic analysis:
+# AA (homozygous reference) = 0
+# AG (heterozygous) = 1
+# GG (homozygous alternate) = 2
+convert_genotype <- function(genotype) {
+  if (is.na(genotype)) {
+    return(NA)  # Keep missing data as NA
+  } else if (genotype == "AA") {
+    return(0)  # Convert AA to 0
+  } else if (genotype == "AG" | genotype == "GA") {
+    return(1)  # Convert AG or GA to 1
+  } else if (genotype == "GG") {
+    return(2)  # Convert GG to 2
+  } else {
+    return(NA)  # Return NA for any unrecognized values
+  }
+}
+
+# Apply the genotype conversion function to the genotype data
+# This will convert the character data into numeric format
+numeric_genotypes <- apply(genotype_data, MARGIN = c(1, 2), FUN = convert_genotype)
+
+# Transpose the numeric genotypes so that rows represent genotypes and columns represent SNPs
+# This format is required for calculating the genetic relationship matrices
+numeric_genotypes <- t(numeric_genotypes)  # Now 75 rows (genotypes) x 27282 columns (SNPs)
+
+# Load the rrBLUP package for genetic relationship matrix calculations
+library(rrBLUP)
+
+# Calculate the additive relationship matrix (GRM) using the numeric genotypes
+# A.mat expects genotypes as rows and SNPs as columns
+G <- A.mat(numeric_genotypes, return.impute = TRUE) # Calculate additive variance
+str(G)  # Check the structure of the GRM
+str(G$A)  # This should now be a 75 x 75 matrix
+
+# Check row names and column names of the GRM
+row.names(G$A)
+colnames(G$A)
+
+# Calculate the dominance relationship matrix using the numeric genotypes
+D <- D.mat(numeric_genotypes, return.imputed = TRUE) # Calculate dominance variance 
+str(D)  # Check the structure of the dominance matrix
+str(D$D)  # This should also be a 75 x 75 matrix
+
+# Calculate the epistatic relationship matrix using the numeric genotypes
+E <- E.mat(numeric_genotypes) # Calculate epistatic relationships
+
+# Extract the genotype names from the GRM
+geno_names_grm <- rownames(G$A)
+
+# Now import the phenotypic data
+# Ensure your phenotypic data is in CSV format for this step
+pheno <- read.csv("mydata75.csv")
+str(pheno)  # Check the structure of the phenotypic data
+
+# Convert the 'geno' column to a factor for statistical modeling
+pheno$geno <- as.factor(pheno$geno)
+
+# Store the genotype names from the phenotypic data
+geno_names_pheno <- pheno$geno  
+
+# Check if the genotype names in the phenotypic data match those in the GRM
+# This should return TRUE if the genotype names are perfectly aligned
+all(geno_names_pheno == geno_names_grm)
+
+# If the names are the same but in a different order, you can reorder your phenotypic data to match the order in the GRM
+# Uncomment this line if you need to reorder your phenotypic data
+# phenotypic_data <- phenotypic_data[match(geno_names_grm, phenotypic_data$geno), ]
+
+# Load additional libraries for mixed model analysis
+library(Matrix)
+library(MASS)
+library(crayon)
+library(sommer)
+
+# Fit a mixed model with additive effects for the trait 'ARA'
+# The model includes fixed and random effects, with residual variance specified
+model_sommer <- mmer(fixed = ARA ~ 1,              # Fixed effect for the trait 'ARA'
+                     random = ~ vsr(geno, Gu = G$A),  # Random effect using the additive GRM
+                     rcov = ~ units,               # Specify the residual variance structure
+                     data = pheno)                 # Provide the phenotypic data for analysis
+
+# Display a summary of the model fitting results
+summary(model_sommer)
+
+# Extract variance components manually from the summary of the fitted model
+varcomp_sommer <- summary(model_sommer)$varcomp
+
+# Extract the additive genetic variance and residual variance from the variance components
+sigma_A_sommer <- varcomp_sommer["u:geno.ARA-ARA", "VarComp"]   # Additive genetic variance for 'ARA'
+sigma_e_sommer <- varcomp_sommer["units.ARA-ARA", "VarComp"]    # Residual variance for 'ARA'
+
+# Calculate narrow-sense heritability for the trait 'ARA'
+h2_sommer <- sigma_A_sommer / (sigma_A_sommer + sigma_e_sommer)
+
+# Print the narrow-sense heritability result
+h2_sommer
+
+# Fit a mixed model for dominance variance for the trait 'ARA'
+model_sommerD <- mmer(fixed = ARA ~ 1,                       # Fixed effect for the trait 'ARA'
+                      random = ~ vsr(geno, Gu = D$D),        # Dominance effect using dominance GRM
+                      rcov = ~ units,                        # Specify the residual variance structure
+                      data = pheno)                          # Provide the phenotypic data for analysis
+
+# Display a summary of the dominance model fitting results
+summary(model_sommerD)
+
+# Extract variance components manually from the summary of the dominance model
+varcomp_sommerD <- summary(model_sommerD)$varcomp
+
+# Extract the dominance genetic variance for the trait 'ARA'
+sigma_D_sommer <- varcomp_sommerD["u:geno.ARA-ARA", "VarComp"]   # Dominance genetic variance for 'ARA'
+print(sigma_D_sommer)
+
+# Define a list of traits you want to analyze in your data
+traits <- c("ARA", "CURH", "DSFG", "DSFR", "DSRG", "DSRR", "DTFN", "GRN", "HMW", "HTFPB", "MAXH", "MAXW", "NBB", "PER", "PHT", "PODWT", "PWDT", "RED", "TLY", "WMH")  # Add your trait names here
+
+# Initialize a data frame to store results for each trait
+results_df <- data.frame(
+  Trait = traits,                             # List of trait names
+  Additive_Variance = numeric(length(traits)),# Initialize as numeric for storing additive variance results
+  Dominance_Variance = numeric(length(traits)),# Initialize as numeric for storing dominance variance results
+  Residual_Variance = numeric(length(traits)), # Initialize as numeric for storing residual variance results
+  Narrow_Sense_Heritability = numeric(length(traits)) # Initialize as numeric for storing heritability results
+)
+
+# Loop through each trait to fit mixed models and extract variance components
+for (i in seq_along(traits)) {
+  trait <- traits[i]
+  
+  # Fit the mixed model with additive effects for the current trait
+  model_sommer <- mmer(fixed = as.formula(paste(trait, "~ 1")),              # Fixed effect for the current trait
+                       random = ~ vsr(geno, Gu = G$A),  # Random effect using the additive GRM
+                       rcov = ~ units,               # Specify the residual variance structure
+                       data = pheno)                 # Provide the phenotypic data for analysis
+  
+  # Extract variance components manually from the summary of the fitted model
+  varcomp_sommer <- summary(model_sommer)$varcomp
+  
+  # Extract the additive genetic variance and residual variance from the variance components
+  sigma_A_sommer <- varcomp_sommer[paste("u:geno.", trait, "-", trait, sep = ""), "VarComp"]   # Additive genetic variance for the current trait
+  sigma_e_sommer <- varcomp_sommer["units", "VarComp"]    # Residual variance for the current trait
+  
+  # Store the additive and residual variances in the results data frame
+  results_df$Additive_Variance[i] <- sigma_A_sommer
+  results_df$Residual_Variance[i] <- sigma_e_sommer
+  
+  # Calculate narrow-sense heritability for the current trait
+  h2_sommer <- sigma_A_sommer / (sigma_A_sommer + sigma_e_sommer)
+  results_df$Narrow_Sense_Heritability[i] <- h2_sommer
+  
+  # Fit a mixed model for dominance variance for the current trait
+  model_sommerD <- mmer(fixed = as.formula(paste(trait, "~ 1")),                       # Fixed effect for the current trait
+                        random = ~ vsr(geno, Gu = D$D),        # Dominance effect using dominance GRM
+                        rcov = ~ units,                        # Specify the residual variance structure
+                        data = pheno)                          # Provide the phenotypic data for analysis
+  
+  # Extract variance components manually from the summary of the dominance model
+  varcomp_sommerD <- summary(model_sommerD)$varcomp
+  
+  # Extract the dominance genetic variance for the current trait
+  sigma_D_sommer <- varcomp_sommerD[paste("u:geno.", trait, "-", trait, sep = ""), "VarComp"]   # Dominance genetic variance for the current trait
+  
+  # Store the dominance variance in the results data frame
+  results_df$Dominance_Variance[i] <- sigma_D_sommer
+}
+
+# Display the results data frame
+print(results_df)
+
+# Load the writexl package
+library(writexl)
+
+# Write the results to an Excel file in the working directory
+write_xlsx(results_df, path = "heritability_additive_dominance_results.xlsx")
+
+# Print confirmation
+cat("Results have been saved to 'heritability_additive_dominance_results.xlsx' in the working directory.")
+
