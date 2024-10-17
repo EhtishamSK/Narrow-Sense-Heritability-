@@ -148,3 +148,71 @@ write.csv(results, "heritability_results.csv", row.names = FALSE)
 
 # Print the heritability results
 print(results)
+
+
+#Now, let's calculate the dominance variance. 
+#Initially, I attempted to use the same model for extraction, but it proved challenging to obtain the variance directly. 
+#Therefore, I decided to calculate it separately using the script below
+
+
+# Load the necessary library for mixed models
+library(sommer)
+
+# Function to calculate dominance variance for a given trait
+# The function takes in a trait name, the phenotypic data, and the dominance GRM (D).
+calculate_dominance_variance <- function(trait, data, D) {
+  # Fit the mixed model for the specified trait, with dominance effect using the GRM (D$D)
+  model <- mmer(fixed = as.formula(paste(trait, "~ 1")),  # Fixed effect for the trait
+                random = ~ vsr(geno, Gu = D$D),           # Random effect for dominance using the GRM
+                rcov = ~ units,                           # Residual variance
+                data = data)                              # The phenotypic data
+  
+  # Extract variance components from the fitted model
+  varcomp <- summary(model)$varcomp
+  
+  # Extract dominance genetic variance (sigma_D) and residual variance (sigma_e) from the model
+  sigma_D <- varcomp[paste0("u:geno.", trait, "-", trait), "VarComp"]  # Dominance variance
+  sigma_e <- varcomp[paste0("units.", trait, "-", trait), "VarComp"]   # Residual variance
+  
+  # Return the trait name, dominance variance, and residual variance as a named vector
+  return(c(trait = trait, dominance_variance = sigma_D, residual_variance = sigma_e))
+}
+
+# Create an empty data frame to store the dominance variance results
+dominance_results <- data.frame(trait = character(),              # Column for trait names
+                                dominance_variance = numeric(),   # Column for dominance variance values
+                                residual_variance = numeric(),    # Column for residual variance values
+                                stringsAsFactors = FALSE)
+
+# List of all trait names in the phenotypic data (excluding the first column 'geno')
+trait_names <- colnames(pheno)[2:21]
+
+# Loop through all traits in the phenotypic data
+for (trait in trait_names) {
+  # Call the function for each trait to calculate dominance and residual variances
+  result <- calculate_dominance_variance(trait, pheno, D)
+  # Convert the result to a data frame and append it to the dominance_results data frame
+  dominance_results <- rbind(dominance_results, as.data.frame(t(result)))
+}
+
+# Convert the columns for dominance variance and residual variance to numeric format
+dominance_results$dominance_variance <- as.numeric(as.character(dominance_results$dominance_variance))
+dominance_results$residual_variance <- as.numeric(as.character(dominance_results$residual_variance))
+
+# Save the final results to a CSV file for later reference or sharing
+write.csv(dominance_results, "dominance_variance_results.csv", row.names = FALSE)
+
+# Print the results to check the output
+print(dominance_results)
+
+
+
+
+
+
+
+
+
+
+
+
