@@ -150,101 +150,68 @@ h2_PODW <- sigma_AA / (sigma_AA + sigma_DD + sigma_DE)
 print(h2_PODW)
 
 
-
-
-
-
-
-# Loop over all traits in the phenotypic dataset and calculate heritability
-trait_names <- colnames(pheno)[2:21]  # Select all traits except 'geno'
-results <- data.frame(trait = character(),
-                      additive_variance = numeric(),
-                      residual_variance = numeric(),
-                      heritability = numeric(), stringsAsFactors = FALSE)
-
-for (trait in trait_names) {
-  result <- calculate_heritability(trait, pheno, G)
-  results <- rbind(results, as.data.frame(t(result)))
-}
-
-# Correct column names for the results
-colnames(results) <- c("Trait", "Additive_Variance", "Residual_Variance", "Heritability")
-
-# Convert numeric columns for proper formatting
-results$Additive_Variance <- as.numeric(as.character(results$Additive_Variance))
-results$Residual_Variance <- as.numeric(as.character(results$Residual_Variance))
-results$Heritability <- as.numeric(as.character(results$Heritability))
-
-# Save the results to a CSV file for future reference
-write.csv(results, "heritability_results.csv", row.names = FALSE)
-
-# Print the heritability results
-print(results)
-
-
-#Now, let's calculate the dominance variance. 
-#Initially, I attempted to use the same model for extraction, but it proved challenging to obtain the variance directly. 
-#Therefore, I decided to calculate it separately using the script below
-
-
-# Load the necessary library for mixed models
+# Load required library 
 library(sommer)
 
-# Function to calculate dominance variance for a given trait
-# The function takes in a trait name, the phenotypic data, and the dominance GRM (D).
-calculate_dominance_variance <- function(trait, data, D) {
-  # Fit the mixed model for the specified trait, with dominance effect using the GRM (D$D)
-  model <- mmer(fixed = as.formula(paste(trait, "~ 1")),  # Fixed effect for the trait
-                random = ~ vsr(geno, Gu = D$D),           # Random effect for dominance using the GRM
-                rcov = ~ units,                           # Residual variance
-                data = data)                              # The phenotypic data
+# Define the traits to analyze from the imported pheno data by column numbers
+traits <- colnames(pheno)[2:5]  
+
+# Initialize a data frame to store results
+results <- data.frame(
+  Trait = character(),
+  Sigma_AA = numeric(),
+  Sigma_AE = numeric(),
+  Sigma_DD = numeric(),
+  Sigma_DE = numeric(),
+  Heritability = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each trait
+for (trait in traits) {
+  # Fit mixed model for additive effects
+  model_A <- mmes(
+    fixed = as.formula(paste(trait, "~ 1")),
+    random = ~ vsm(ism(geno), Gu = A$A),
+    rcov = ~ units,
+    data = pheno
+  )
   
-  # Extract variance components from the fitted model
-  varcomp <- summary(model)$varcomp
+  # Extract variance components for additive model
+  varcomp_A <- summary(model_A)$varcomp
+  sigma_AA <- varcomp_A["geno:A:mu:mu", "VarComp"]  # Additive genetic variance
+  sigma_AE <- varcomp_A["units:mu:mu", "VarComp"]   # Residual variance
   
-  # Extract dominance genetic variance (sigma_D) and residual variance (sigma_e) from the model
-  sigma_D <- varcomp[paste0("u:geno.", trait, "-", trait), "VarComp"]  # Dominance variance
-  sigma_e <- varcomp[paste0("units.", trait, "-", trait), "VarComp"]   # Residual variance
+  # Fit mixed model for dominance effects
+  model_D <- mmes(
+    fixed = as.formula(paste(trait, "~ 1")),
+    random = ~ vsm(ism(geno), Gu = D$D),
+    rcov = ~ units,
+    data = pheno
+  )
   
-  # Return the trait name, dominance variance, and residual variance as a named vector
-  return(c(trait = trait, dominance_variance = sigma_D, residual_variance = sigma_e))
+  # Extract variance components for dominance model
+  varcomp_D <- summary(model_D)$varcomp
+  sigma_DD <- varcomp_D["geno:D:mu:mu", "VarComp"]  # Dominance genetic variance
+  sigma_DE <- varcomp_D["units:mu:mu", "VarComp"]   # Residual variance
+  
+  # Calculate narrow-sense heritability
+  h2 <- sigma_AA / (sigma_AA + sigma_DD + sigma_DE)
+  
+  # Store results in data frame
+  results <- rbind(results, data.frame(
+    Trait = trait,
+    Sigma_AA = sigma_AA,
+    Sigma_AE = sigma_AE,
+    Sigma_DD = sigma_DD,
+    Sigma_DE = sigma_DE,
+    Heritability = h2
+  ))
 }
 
-# Create an empty data frame to store the dominance variance results
-dominance_results <- data.frame(trait = character(),              # Column for trait names
-                                dominance_variance = numeric(),   # Column for dominance variance values
-                                residual_variance = numeric(),    # Column for residual variance values
-                                stringsAsFactors = FALSE)
+# Save results to a CSV file
+write.csv(results, "variance_components_heritability.csv", row.names = FALSE)
 
-# List of all trait names in the phenotypic data (excluding the first column 'geno')
-trait_names <- colnames(pheno)[2:21]
-
-# Loop through all traits in the phenotypic data
-for (trait in trait_names) {
-  # Call the function for each trait to calculate dominance and residual variances
-  result <- calculate_dominance_variance(trait, pheno, D)
-  # Convert the result to a data frame and append it to the dominance_results data frame
-  dominance_results <- rbind(dominance_results, as.data.frame(t(result)))
-}
-
-# Convert the columns for dominance variance and residual variance to numeric format
-dominance_results$dominance_variance <- as.numeric(as.character(dominance_results$dominance_variance))
-dominance_results$residual_variance <- as.numeric(as.character(dominance_results$residual_variance))
-
-# Save the final results to a CSV file for later reference or sharing
-write.csv(dominance_results, "dominance_variance_results.csv", row.names = FALSE)
-
-# Print the results to check the output
-print(dominance_results)
-
-
-
-
-
-
-
-
-
-
-
+# Print results to console
+print(results)
 
