@@ -19,6 +19,7 @@ library(dplyr)
 genotype_data <- hapmap_data[, 12:ncol(hapmap_data)]
 str(genotype_data)  # Check the structure of the extracted genotype data
 
+head (genotype_data)
 # Conversion of genotype calls to numerical format:
 # AA = 0 (homozygous reference)
 # AG/GA = 1 (heterozygous)
@@ -89,7 +90,8 @@ library(crayon)
 library(sommer)
 
 ## Let's try modeling for additive and dominance variance in a single mixed model 
-# I have observed that for some traits either additive or dominance variance turns out to be zero when modeled together 
+# I have observed that for some traits either additive or dominance variance turns out to be zero when modeled together. 
+# Please not that it is not the same every time. 
 # To avoid this, I opted for two different mix models, one each for additive and dominance variance  
 # Residual variance of either model can be used to calculate heritability 
 
@@ -99,15 +101,84 @@ model.AD <- mmes(
   random = ~ vsm(ism(geno), Gu = A$A) +
     vsm(ism(geno), Gu = D$D),
   rcov = ~ units,
-  nIters = 10,
+  nIters = 1000,
   data = pheno,
-  verbose = FALSE
+  verbose = TRUE
 )
 (summary(model.AD)$varcomp)
 
-#calculate narrow sense heritability. V1=additive variance, V2=dominance variance, V3=residual variance  
-podw <- vpredict(model.AD, h2 ~ (V1) / ( V1+V3) ) 
-print(podw)
+# Extract variance components manually from model.AD
+varcomp_model.AD <- summary(model.AD)$varcomp
+print(varcomp_model.AD)
+
+model.AD_sigma_A <- varcomp_model.AD["geno:A:mu:mu", "VarComp"]  # Additive variance
+model.AD_sigma_D <- varcomp_model.AD["geno:D:mu:mu", "VarComp"]  # Dominance variance
+model.AD_sigma_E <- varcomp_model.AD["units:mu:mu" , "VarComp"]  # Residual variance
+
+
+# Calculate narrow-sense heritability for single trait 
+h2_PODW <- model.AD_sigma_A / (model.AD_sigma_A + model.AD_sigma_D + model.AD_sigma_E)
+print(h2_PODW)
+
+# you can also use inbuilt function from sommer to calculate narrow sense heritability, however, I opted formula mentioned before   
+# V1=additive variance, V2=dominance variance, V3=residual variance  
+PODW <- vpredict(model.AD, h2 ~ (V1) / ( V1+V3) ) 
+print(PODW)
+
+
+# Let's use a loop for multiple traits for model.AD 
+
+# Initialize an empty data frame to store results
+results_model.AD <- data.frame(Trait = character(),
+                      Additive_Var = numeric(),
+                      Dominance_Var = numeric(),
+                      Residual_Var = numeric(),
+                      Heritability = numeric(),
+                      stringsAsFactors = FALSE)
+
+# Define the traits to analyze from the imported pheno data
+traits <- colnames(pheno)[2:5]
+
+# Loop through each trait
+for (trait in traits) {
+  # Create formula for the current trait
+  formula <- as.formula(paste(trait, "~ 1"))
+  
+  # Fit mixed model for additive and dominance variance
+  model.AD <- mmes(
+    fixed = formula,
+    random = ~ vsm(ism(geno), Gu = A$A) +
+      vsm(ism(geno), Gu = D$D),
+    rcov = ~ units,
+    nIters = 1000,
+    data = pheno,
+    verbose = TRUE
+  )
+  
+  # Extract variance components
+  varcomp_model.AD <- summary(model.AD)$varcomp
+  sigma_A <- varcomp_model.AD["geno:A:mu:mu", "VarComp"]  # Additive variance
+  sigma_D <- varcomp_model.AD["geno:D:mu:mu", "VarComp"]  # Dominance variance
+  sigma_E <- varcomp_model.AD["units:mu:mu", "VarComp"]  # Residual variance
+  
+  # Calculate narrow-sense heritability
+  h2 <- sigma_A / (sigma_A + sigma_D + sigma_E)
+  
+  # Store results in data frame
+  results_model.AD <- rbind(results_model.AD, data.frame(
+    Trait = trait,
+    Additive_Var = sigma_A,
+    Dominance_Var = sigma_D,
+    Residual_Var = sigma_E,
+    Heritability = h2
+  ))
+}
+
+# Save results to CSV
+write.csv(results, "model.AD_heritability_results.csv", row.names = FALSE)
+
+# Print results
+print(results)
 
 ## Now, let's model additive and dominance variance in a separate mix model 
 
