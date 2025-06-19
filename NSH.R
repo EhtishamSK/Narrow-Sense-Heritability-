@@ -99,11 +99,6 @@ library(sommer)
 
 ## Let's try modeling for additive and dominance variance in a single mixed model 
 
-# I have observed that for some traits, either additive or dominance variance turns out to be zero when modeled together. 
-# To avoid this, I opted for both approaches, model the additive and dominance together and also separately 
-# You can use either approach or use the the model with best results 
-
-
 # Fit a mix model for additive and dominance variance for a single trait
 model.AD <- mmes(
   fixed = GRN ~ 1,
