@@ -97,11 +97,11 @@ library(sommer)
 
 # Fit a mix model for additive and dominance variance for a single trait
 model.AD <- mmes(
-  fixed = PODW ~ 1,
+  fixed = GRN ~ 1,
   random = ~ vsm(ism(geno), Gu = A$A) +
     vsm(ism(geno), Gu = D$D),
   rcov = ~ units,
-  nIters = 1000,
+  nIters = 2000,
   data = pheno,
   verbose = TRUE
 )
@@ -117,14 +117,13 @@ model.AD_sigma_E <- varcomp_model.AD["units:mu:mu" , "VarComp"]  # Residual vari
 
 
 # Calculate narrow-sense heritability for single trait 
-h2_PODW <- model.AD_sigma_A / (model.AD_sigma_A + model.AD_sigma_D + model.AD_sigma_E)
-print(h2_PODW)
+h2 <- model.AD_sigma_A / (model.AD_sigma_A + model.AD_sigma_D + model.AD_sigma_E)
+print(h2)
 
 # you can also use inbuilt function from sommer to calculate narrow sense heritability, however, I opted formula mentioned before   
 # V1=additive variance, V2=dominance variance, V3=residual variance  
-PODW <- vpredict(model.AD, h2 ~ (V1) / ( V1+V3) ) 
-print(PODW)
-
+ARA <- vpredict(model.AD, h2 ~ (V1) / ( V1+V3) ) 
+print(ARA)
 
 # Let's use a loop for multiple traits for model.AD 
 
@@ -175,15 +174,15 @@ for (trait in traits) {
 }
 
 # Save results to CSV
-write.csv(results, "model.AD_heritability_results.csv", row.names = FALSE)
+write.csv(results_model.AD, "model.AD_heritability_results.csv", row.names = FALSE)
 
 # Print results
-print(results)
+print(results_model.AD)
 
 ## Now, let's model additive and dominance variance in a separate mix model 
 
 # Fit a mixed model using the GRM for additive effects on a single trait
-model_A <- mmes(fixed = PODW ~ 1,  # Fixed effect for the trait
+model_A <- mmes(fixed = GRN ~ 1,  # Fixed effect for the trait
                 random = ~ vsm(ism(geno), Gu = A$A),  # Random effect using the GRM (Additive variance)
                 rcov = ~ units,  # Residual variance
                 data = pheno)  # Phenotypic data
@@ -286,3 +285,13 @@ write.csv(results, "variance_components_heritability.csv", row.names = FALSE)
 # Print results to console
 print(results)
 
+
+## Note  
+# The mixed model for one of the traits (using mmes from sommer) estimates 
+# zero additive and dominance variances, with all phenotypic variance 
+# attributed to residuals. This is likely due to low genetic variation for the 
+# trait, a small sample size (125 genotypes), and near-singular relationship matrices
+# Simplifying to an additive-only model, regularizing matrices, and 
+# log transformation did not resolve the issue.
+
+## The model code is correct, but the data may lack sufficient genetic signal.
