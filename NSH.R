@@ -89,11 +89,20 @@ library(MASS)
 library(crayon)
 library(sommer)
 
+### NOTE: 
+# When fitting mixed models for certain traits, either the additive or dominance variance 
+# may be estimated as zero when modeled together, with all phenotypic variance attributed to residuals. 
+# To address this, I fitted models with both additive and dominance effects combined, 
+# as well as separate models for additive-only and dominance-only effects. 
+# For robust results, compare model fit and choose the approach with the best performance
+
+
 ## Let's try modeling for additive and dominance variance in a single mixed model 
-# I have observed that for some traits either additive or dominance variance turns out to be zero when modeled together. 
-# Please not that it is not the same every time. 
-# To avoid this, I opted for two different mix models, one each for additive and dominance variance  
-# Residual variance of either model can be used to calculate heritability 
+
+# I have observed that for some traits, either additive or dominance variance turns out to be zero when modeled together. 
+# To avoid this, I opted for both approaches, model the additive and dominance together and also separately 
+# You can use either approach or use the the model with best results 
+
 
 # Fit a mix model for additive and dominance variance for a single trait
 model.AD <- mmes(
@@ -286,7 +295,8 @@ write.csv(results, "variance_components_heritability.csv", row.names = FALSE)
 print(results)
 
 
-## Note  
+## Note on Variance Components for Mixed Models
+
 # The mixed model for one of the traits (using mmes from sommer) estimates 
 # zero additive and dominance variances, with all phenotypic variance 
 # attributed to residuals. This is likely due to low genetic variation for the 
